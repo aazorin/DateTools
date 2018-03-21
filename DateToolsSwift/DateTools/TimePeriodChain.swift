@@ -1,182 +1,218 @@
+// Copyright (C) 2014 by Matthew York
 //
-//  TimePeriodChain.swift
-//  DateTools
+// Permission is hereby granted, free of charge, to any
+// person obtaining a copy of this software and
+// associated documentation files (the "Software"), to
+// deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the
+// Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
 //
-//  Created by Grayson Webster on 8/17/16.
-//  Copyright © 2016 Grayson Webster. All rights reserved.
+// The above copyright notice and this permission notice shall
+// be included in all copies or substantial portions of the Software.
 //
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+// OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+// BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+// ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import Foundation
+#import "DTTimePeriodChain.h"
+#import "DTError.h"
 
-/**
- *  Time period chains serve as a tightly coupled set of time periods. They are
- *  always organized by start and end date, and have their own characteristics like
- *  a StartDate and EndDate that are extrapolated from the time periods within. Time 
- *  period chains do not allow overlaps within their set of time periods. This type of 
- *  group is ideal for modeling schedules like sequential meetings or appointments.
- *
- *  [Visit our github page](https://github.com/MatthewYork/DateTools#time-period-chains) for more information.
- */
-open class TimePeriodChain: TimePeriodGroup {
+@interface DTTimePeriodChain ()
+
+@end
+
+@implementation DTTimePeriodChain
+
+#pragma mark - Custom Init / Factory Chain
++(DTTimePeriodChain *)chain{
+    return [[DTTimePeriodChain alloc] init];
+}
+
+#pragma mark - Chain Existence Manipulation
+-(void)addTimePeriod:(DTTimePeriod *)period{
+    if ([period class] != [DTTimePeriod class]) {
+        [DTError throwBadTypeException:period expectedClass:[DTTimePeriod class]];
+        return;
+    }
     
-    // MARK: - Chain Existence Manipulation
-    
-    /**
-     *  Append a TimePeriodProtocol to the periods array and update the Chain's
-     *  beginning and end.
-     *
-     * - parameter period: TimePeriodProtocol to add to the collection
-     */
-    public func append(_ period: TimePeriodProtocol) {
-        let beginning = (self.periods.count > 0) ? self.periods.last!.end! : period.beginning
-        
-        let newPeriod = TimePeriod(beginning: beginning!, duration: period.duration)
-        self.periods.append(newPeriod)
-        
-        //Update updateExtremes
-        if periods.count == 1 {
-            _beginning = period.beginning
-            _end = period.end
+    if (periods) {
+        if (periods.count > 0) {
+            //Create a modified period to be added based on size of passed in period
+            DTTimePeriod *modifiedPeriod = [DTTimePeriod timePeriodWithSize:DTTimePeriodSizeSecond amount:period.durationInSeconds startingAt:[periods[periods.count - 1] EndDate]];
+            
+            //Add object to periods array
+            [periods addObject:modifiedPeriod];
         }
         else {
-            _end = _end?.addingTimeInterval(period.duration)
+            //Add object to periods array
+            [periods addObject:period];
         }
     }
+    else {
+        //Create new periods array
+        periods = [NSMutableArray array];
+        
+        //Add object to periods array
+        [periods addObject:period];
+    }
     
-    /**
-     *  Append a TimePeriodProtocol array to the periods array and update the Chain's
-     *  beginning and end.
-     *
-     * - parameter periodArray: TimePeriodProtocol list to add to the collection
-     */
-    public func append<G: TimePeriodGroup>(contentsOf group: G) {
-        for period in group.periods {
-            let beginning = (self.periods.count > 0) ? self.periods.last!.end! : period.beginning
-            
-            let newPeriod = TimePeriod(beginning: beginning!, duration: period.duration)
-            self.periods.append(newPeriod)
-            
-            //Update updateExtremes
-            if periods.count == 1 {
-                _beginning = period.beginning
-                _end = period.end
+    //Set object's variables with updated array values
+    [self updateVariables];
+}
+
+-(void)insertTimePeriod:(DTTimePeriod *)period atInedx:(NSInteger)index{
+    if ([period class] != [DTTimePeriod class]) {
+        [DTError throwBadTypeException:period expectedClass:[DTTimePeriod class]];
+        return;
+    }
+    
+    //Make sure the index is within the operable bounds of the periods array
+    if (index == 0) {
+        //Update bounds of period to make it fit in chain
+        DTTimePeriod *modifiedPeriod = [DTTimePeriod timePeriodWithSize:DTTimePeriodSizeSecond amount:period.durationInSeconds endingAt:[periods[0] EndDate]];
+        
+        //Insert the updated object at the beginning of the periods array
+        [periods insertObject:modifiedPeriod atIndex:0];
+    }
+    else if (index > 0 && index < periods.count) {
+        
+        //Shift time periods later if they fall after new period
+        [periods enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+            //Shift later
+            if (idx >= index) {
+                [((DTTimePeriod *) obj) shiftLaterWithSize:DTTimePeriodSizeSecond amount:period.durationInSeconds];
             }
-            else {
-                _end = _end?.addingTimeInterval(period.duration)
-            }
-        }
-    }
-    
-    /**
-     *  Insert period into periods array at given index.
-     *
-     * - parameter newElement: The period to insert
-     * - parameter index: Index to insert period at
-     */
-    public func insert(_ period: TimePeriodProtocol, at index: Int) {
-        //Check for special zero case which takes the beginning date
-        if index == 0 && period.beginning != nil && period.end != nil {
-            //Insert new period
-            periods.insert(period, at: index)
-        }
-        else if period.beginning != nil && period.end != nil {
-            //Insert new period
-            periods.insert(period, at: index)
-        }
-        else {
-            print("All TimePeriods in a TimePeriodChain must contain a defined start and end date")
-            return
-        }
+        }];
         
-        //Shift all periods after inserted period
-        for i in 0..<periods.count {
-            if i > index && i > 0 {
-                let currentPeriod = TimePeriod(beginning: period.beginning, end: period.end)
-                periods[i].beginning = periods[i-1].end
-                periods[i].end = periods[i].beginning!.addingTimeInterval(currentPeriod.duration)
-            }
-        }
+        //Update bounds of period to make it fit in chain
+        DTTimePeriod *modifiedPeriod = [DTTimePeriod timePeriodWithSize:DTTimePeriodSizeSecond amount:period.durationInSeconds startingAt:[periods[index - 1] EndDate]];
         
-        updateExtremes()
-    }
-    
-    /**
-     *  Remove from period array at the given index.
-     *
-     * - parameter at: The index in the collection to remove
-     */
-    public func remove(at index: Int) {
-        //Retrieve duration of period to be removed
-        let duration = periods[index].duration
+        //Insert the updated object at the beginning of the periods array
+        [periods insertObject:modifiedPeriod atIndex:index];
         
-        //Remove period
-        periods.remove(at: index)
-        
-        //Shift all periods after inserted period
-        for i in index..<periods.count {
-            periods[i].shift(by: -duration)
-        }
-        updateExtremes()
+        //Set object's variables with updated array values
+        [self updateVariables];
     }
-    
-    /**
-     *  Remove all periods from period array.
-     */
-    public func removeAll() {
-        self.periods.removeAll()
-        updateExtremes()
-    }
-    
-    //MARK: - Chain Content Manipulation
-    
-    /**
-     *  In place, shifts all chain time periods by a given time interval
-     *
-     * - parameter duration: The time interval to shift the period by
-     */
-    public func shift(by duration: TimeInterval) {
-        for var period in self.periods {
-            period.shift(by:duration)
-        }
-        
-        _beginning = _beginning?.addingTimeInterval(duration)
-        _end = _end?.addingTimeInterval(duration)
-    }
-    
-    public override func map<T>(_ transform: (TimePeriodProtocol) throws -> T) rethrows -> [T] {
-        return try periods.map(transform)
-    }
-    
-    public override func filter(_ isIncluded: (TimePeriodProtocol) throws -> Bool) rethrows -> [TimePeriodProtocol] {
-        return try periods.filter(isIncluded)
-    }
-    
-    internal override func reduce<Result>(_ initialResult: Result, _ nextPartialResult: (Result, TimePeriodProtocol) throws -> Result) rethrows -> Result {
-        return try periods.reduce(initialResult, nextPartialResult)
-    }
-    
-    /**
-     *  Removes the last object from the `TimePeriodChain` and returns it
-     *
-     */
-    public func pop() -> TimePeriodProtocol? {
-        let period = self.periods.popLast()
-        updateExtremes()
-        
-        return period
-    }
-    
-    internal func updateExtremes() {
-        _beginning = periods.first?.beginning
-        _end = periods.last?.end
-    }
-    
-    // MARK: - Operator Overloads
-    
-    /**
-     *  Operator overload for comparing `TimePeriodChain`s to each other
-     */
-    public static func ==(left: TimePeriodChain, right: TimePeriodChain) -> Bool {
-        return left.equals(right)
+    else {
+        [DTError throwInsertOutOfBoundsException:index array:periods];
     }
 }
+
+-(void)removeTimePeriodAtIndex:(NSInteger)index{
+    //Make sure the index is within the operable bounds of the periods array
+    if (index >= 0 && index < periods.count) {
+        DTTimePeriod *period = periods[index];
+        
+        //Shift time periods later if they fall after new period
+        [periods enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+            //Shift earlier
+            if (idx > index) {
+                [((DTTimePeriod *) obj) shiftEarlierWithSize:DTTimePeriodSizeSecond amount:period.durationInSeconds];
+            }
+        }];
+        
+        //Remove object
+        [periods removeObjectAtIndex:index];
+        
+        //Set object's variables with updated array values
+        [self updateVariables];
+    }
+    else {
+        [DTError throwRemoveOutOfBoundsException:index array:periods];
+    }
+}
+-(void)removeLatestTimePeriod{
+    if (periods.count > 0) {
+        [periods removeLastObject];
+        
+        //Update the object variables
+        if (periods.count > 0) {
+            //Set object's variables with updated array values
+            [self updateVariables];
+        }
+        else {
+            [self setVariablesNil];
+        }
+    }
+}
+-(void)removeEarliestTimePeriod{
+    if (periods > 0) {
+        //Shift time periods earlier
+        [periods enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+            //Shift earlier to account for removal of first element in periods array
+            [((DTTimePeriod *) obj) shiftEarlierWithSize:DTTimePeriodSizeSecond amount:[self->periods[0] durationInSeconds]];
+        }];
+        
+        //Remove first period
+        [periods removeObjectAtIndex:0];
+        
+        //Update the object variables
+        if (periods.count > 0) {
+            //Set object's variables with updated array values
+            [self updateVariables];
+        }
+        else {
+            [self setVariablesNil];
+        }
+    }
+}
+
+#pragma mark - Chain Relationship
+-(BOOL)isEqualToChain:(DTTimePeriodChain *)chain{
+    //Check class
+    if ([chain class] != [DTTimePeriodChain class]) {
+        [DTError throwBadTypeException:chain expectedClass:[DTTimePeriodChain class]];
+        return NO;
+    }
+    
+    //Check group level characteristics for speed
+    if (![self hasSameCharacteristicsAs:chain]) {
+        return NO;
+    }
+    
+    //Check whole chain
+    __block BOOL isEqual = YES;
+    [periods enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+        if (![chain[idx] isEqualToPeriod:obj]) {
+            isEqual = NO;
+            *stop = YES;
+        }
+    }];
+    return isEqual;
+}
+
+#pragma mark - Getters
+
+-(DTTimePeriod *)First{
+    return First;
+}
+
+-(DTTimePeriod *)Last{
+    return Last;
+}
+
+#pragma mark - Helper Methods
+
+-(void)updateVariables{
+    //Set helper variables
+    StartDate = [periods[0] StartDate];
+    EndDate = [periods[periods.count - 1] EndDate];
+    First = periods[0];
+    Last = periods[periods.count -1];
+}
+
+-(void)setVariablesNil{
+    //Set helper variables
+    StartDate = nil;
+    EndDate = nil;
+    First = nil;
+    Last = nil;
+}
+
+@end
